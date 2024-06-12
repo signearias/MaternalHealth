@@ -89,6 +89,12 @@ As shown in the box plot there are some abnormally low heart rates which will al
 
 Finally, I looked at the distribution of the risk levels to see if the data was skewed towards low or high but it appears to be approximately equally distributed.
 
+```{r, echo=TRUE}
+ggplot(data, aes(x = RiskLevel, fill = RiskLevel)) +
+  geom_bar() +
+  labs(title = "Count of Risk Levels", x = "Risk Level", y = "Count")
+```
+
 ## Data cleaning
 
 As mentioned in the basic visualisation section above I will be excluding entries where the age is below 16 and above 60. 
@@ -200,7 +206,7 @@ linear_regression_model <- lm(RiskLevelNumeric ~ ., data = training_data)
 random_forest_model <- randomForest(RiskLevelNumeric ~ ., data = training_data)
 ```
 
-I then generated predictions by running the models against the validation set.
+And then generated predictions by running the models against the validation set.
 
 ```{r, echo=TRUE}
 dt_predictions <- predict(decision_tree_model, validation_data, type = "class")
@@ -234,7 +240,7 @@ accuracies_df <- tibble(Model = names(accuracies), Accuracy = accuracies)
 accuracies_df %>% knitr::kable()
 ```
 
-From the table above we can see that both a decision tree and linear regression provide the best accuracy.
+From the table above we can see that both a Decision Tree and Linear Regression provide the best accuracy.
 
 ## Re-test with fewer health markers
 
@@ -247,7 +253,7 @@ training_data_subset <- training_data[, setdiff(names(training_data), "BodyTemp"
 validation_data_subset <- validation_data[, setdiff(names(validation_data), "BodyTemp")]
 ```
 
-I then decided to use the decision tree model to test my hypothesis. (Linear regression was also shown to lead to high accuracy however course instructions asked us to use something more advanced than linear regression.)
+I then decided to use the Decision Tree model to test my hypothesis. (Linear Regression was also shown to lead to high accuracy however course instructions asked us to use something more advanced.)
 
 I trained, evaluated and tested the accuracy of the model.
 
@@ -262,17 +268,17 @@ cat("Compared to full model Accuracy:", dt_accuracy, "\n")
 
 # Results
 
-As shown by the analysis section both a decision tree and linear regression provide the best accuracy. Below is the same table for reference.
+As shown by the analysis section both a Decision Tree and Linear Regression provide the best accuracy. Below is the same table for reference.
 
 ```{r, echo=TRUE}
 accuracies_df %>% knitr::kable()
 ```
 
-Only the decision tree model was used for further analysis and this showed that even when Body Temperature parameter is removed high accuracy on the risk level can be achieved.
+Only the decision Tree Model was used for further analysis and this showed that even when Body Temperature parameter is removed high accuracy on the risk level can be achieved.
 
 # Conclusion
 
-To summarise, various different health markers of pregnant women were used to train a model that shows the mortality risks categorised as low, medium and high. Four different models were used and their accuracies compared. Both decision tree and linear regression models showed high accuracy. Fewer markers were then used to run further analysis in order to establish whether less data could be collected whilst providing the same level of accuracy. This was indeed the case and provides an exciting premise for future work in evaluating the minimum number of markers needed to accurately score pregnant women in low- and middle- income countries where resources are scarce.
+To summarise, various different health markers of pregnant women were used to train a model that shows the mortality risks categorised as low, medium and high. Four different models were used and their accuracies compared. Both Decision Tree and Linear Regression models showed high accuracy. Fewer markers were then used to run further analysis in order to establish whether less data could be collected whilst providing the same level of accuracy. This was indeed the case and provides an exciting premise for future work in evaluating the minimum number of markers needed to accurately score pregnant women in low- and middle- income countries where resources are scarce.
 
 However, there are limitations to our approach and data, data entry error being the highest as shown by some entries showing human heart rates being 7, which we know cannot be the case biologically. 
 

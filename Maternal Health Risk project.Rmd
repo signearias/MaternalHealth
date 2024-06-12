@@ -1,0 +1,284 @@
+---
+title: "Maternal Health Risk project"
+author: "Signe Arias"
+date: "July 2023 - June 2024"
+output: 
+  pdf_document:
+    number_sections: true 
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\newpage
+
+# Introduction
+
+## Setting the scene
+
+Overall maternal mortality rates in the world are still very high. According to the World Health Organisation$^1$ most of these occur in low and lower middle-income countries with highest incidence in the Sub-Saharan Africa and Southern Asia. Most women die due to very preventable issues and better access to healthcare would remedy this. 
+
+## Aim of the project
+
+The aim of this project is to develop a predictor on the level of maternal mortality using the minimum amount of input data. The less data is required for the predictor, the more women can be reached and saved by freeing up resources.  
+
+## Maternal Health Risk dataset$^2$
+
+The Maternal Health Risk dataset was collected by a research team for the purpose of monitoring pregnant women in remote areas in order to reduce mortality rates. The data is based on a rural area in Bangladesh and was collected from various sources such as hospitals, community clinics etc. The data was collected from the individual women by giving them wearable sensing enabled technology.
+
+## Data layout
+
+The data contains 1014 entries and no personal information such as names was collected, only the relevant information – age and health markers. The health markers that were collected are: systolic and diastolic blood pressure, blood glucose level, body temperature and heart rate. Then based on these parameters each woman was assigned a risk level – low, medium or hight.
+
+## Key analysis steps
+
+To begin with, I wanted to familiarise myself with the data provided. I did so by looking at the headings and then the summary of the data.
+The data seems fairly straightforward and contains just seven columns. It contains data such as age, systolic and diastolic blood pressures as well as glucose readings, body temperature and heart rate.
+
+# Analysis
+
+## Data preview
+
+Firstly, the necessary libraries were loaded and latex installed. Then the csv file containing the data was uploaded.
+
+```{r, echo=TRUE}
+library(tidyverse)
+library(knitr)
+library(readr)
+
+if (!require(tinytex)) install.packages("tinytex")
+library(tinytex)
+
+url <- "https://raw.githubusercontent.com/signearias/MaternalHealth/5c76580bcac266c6145c6a7fb30ca301e0a80203/dataset.csv"
+data <- read_csv(url)
+```
+
+I then wanted to have a quick look at the first few rows of the data, check for any missing values and unique values. And then check the summary.
+
+```{r, echo=TRUE}
+head(data, 10)
+sapply(data, function(x) sum(is.na(x)))
+sapply(data, function(x) length(unique(x)))
+summary(data)
+```
+
+From the above analysis I learned that the data had the expected headings such as age and blood pressure. There are no missing values and the number of unique values in each column makes sense. For example, age has 50 different values and body temperature just eight. From the summary I can see that there are some potential outliers in age and heart rate which I will check for by performing some basic visualisation.
+
+## Basic visualisation
+
+I started by running a histogram to see what the distribution of age is.
+
+```{r, echo=TRUE}
+ggplot(data, aes(x = Age)) +
+  geom_histogram(binwidth = 1, fill = "darkgreen", color = "black") +
+  labs(title = "Age Distribution", x = "Age", y = "Frequency")
+```
+
+Looking at the histogram I can see that there are several values for women aged below 16 and over 60. I will be excluding these values when running my algorithms as I believe these ages come with their own challenges beyond the markers collected in this data set.
+I then looked at the heart rate.
+
+```{r, echo=TRUE}
+ggplot(data, aes(y = HeartRate, x = RiskLevel)) +
+  geom_boxplot() +
+  labs(title = "Heart Rate by Risk Level", x = "Risk Level", y = "Heart Rate")
+```
+
+As shown in the box plot there are some abnormally low heart rates which will also need to be excluded from the analysis.
+
+Finally, I looked at the distribution of the risk levels to see if the data was skewed towards low or high but it appears to be approximately equally distributed.
+
+## Data cleaning
+
+As mentioned in the basic visualisation section above I will be excluding entries where the age is below 16 and above 60. 
+
+```{r, echo=TRUE}
+clean_data <- subset(data, Age >= 16 & Age <= 49)
+```
+
+I will also exclude entries where the heart rate is recorded below 50.
+
+```{r, echo=TRUE}
+clean_data <- subset(clean_data, HeartRate >= 50)
+```
+
+When initially inspecting the data, I noticed that the Risk Level values are recorded as low, medium and high which will make comparison and visualisation hard and therefore I re-wrote them to be displayed as numeric values where low risk is a value of 1, medium risk is 2 and high risk is 3.
+
+```{r, echo=TRUE}
+clean_data$RiskLevelNumeric <- as.numeric(factor(clean_data$RiskLevel, levels = c("low risk", "mid risk", "high risk"), labels = c(1, 2, 3)))
+```
+
+I then ran a summary of my clean data to see that all the outliers were indeed removed and that the Risk Level values were now numeric.
+
+```{r, echo=TRUE}
+summary(clean_data)
+```
+
+## Correlation analysis
+
+In order to choose what health markers to include / exclude from my algorithm I ran a correlation between each marker and the risk level. 
+
+```{r, echo=TRUE}
+numeric_data <- clean_data[, sapply(clean_data, is.numeric)]
+correlation_matrix <- cor(numeric_data)
+correlation_with_risk <- correlation_matrix[, "RiskLevelNumeric"]
+
+correlation_df <- tibble(Feature = names(correlation_with_risk), Correlation = correlation_with_risk)
+correlation_df %>% knitr::kable()
+```
+
+The analysis showed that Body Temperature had the least correlation and Blood Sugar the highest. This makes sense as Body Temperature had only eight different values and is a marker that we expect doesn’t vary too much from person to person. The opposite is true for Blood Sugar as this can vary greatly from person to person and highly depends on when the measurement was taken – first thing in the morning after a meal etc. 
+
+## Create training and validation sets
+
+Now it’s time to create the training and validation data sets. Firstly, I set a random seed for reproducibility and then displayed the number of rows I had. When splitting my data into training and validation sets, I wanted to make sure that I had enough data in the validation set. 
+
+```{r, echo=TRUE}
+set.seed(12345)
+num_rows <- nrow(clean_data)
+num_rows
+```
+
+I saw that I had 760 rows of data and as having about a 100 in the validation set makes sense, I randomly split my data into 85% / 15% training vs validation.
+
+```{r, echo=TRUE}
+train_indices <- sample(seq_len(num_rows), size = 0.85 * num_rows)
+training_data <- clean_data[train_indices, ]
+validation_data <- clean_data[-train_indices, ]
+```
+
+I then sense checked the number of rows I had in each set.
+
+```{r, echo=TRUE}
+cat("Number of rows in clean data:", nrow(clean_data), "\n")
+cat("Number of rows in training data:", nrow(training_data), "\n")
+cat("Number of rows in validation data:", nrow(validation_data), "\n")
+```
+
+To further inspect the validity of my 85/15 split I wanted to make sure that the ratios of risk levels were approximately equal. I therefore installed a package that allowed me to do so.
+
+```{r, echo=TRUE}
+if (!require(patchwork)) install.packages("patchwork")
+library(patchwork)
+```
+
+And then plotted the individual graphs and displayed the combined one.
+
+```{r, echo=TRUE}
+plot_training <- ggplot(training_data, aes(x = RiskLevelNumeric, fill = RiskLevel)) +
+  geom_bar() +
+  labs(title = "Training Data", x = "Risk Level", y = "Count")
+plot_validation <- ggplot(validation_data, aes(x = RiskLevelNumeric, fill = RiskLevel)) +
+  geom_bar() +
+  labs(title = "Validation Data", x = "Risk Level", y = "Count")
+combined_plot <- plot_training + plot_validation
+combined_plot
+```
+
+## Choose and test various models
+
+As this problem requires supervised multi-label classification of a small amount (<100k) of labeled data, I decided to use 4 simple classifiers that provided a balance between ease of use and speed. These models to test are: Decision Tree, SVM, Linear Regression and Random Forest.  
+
+Once the different models were selected, I installed the required packages and libraries.
+
+```{r, echo=TRUE}
+if (!require(rpart)) install.packages("rpart")
+if (!require(e1071)) install.packages("e1071")
+if (!require(randomForest)) install.packages("randomForest")
+library(rpart)
+library(e1071)
+library(randomForest)
+```
+
+I then trained each of the models using the training data.
+
+```{r, echo=TRUE}
+decision_tree_model <- rpart(RiskLevelNumeric ~ ., data = training_data, method = "class")
+svm_model <- svm(RiskLevelNumeric ~ ., data = training_data, kernel = "linear")
+linear_regression_model <- lm(RiskLevelNumeric ~ ., data = training_data)
+random_forest_model <- randomForest(RiskLevelNumeric ~ ., data = training_data)
+```
+
+I then generated predictions by running the models against the validation set.
+
+```{r, echo=TRUE}
+dt_predictions <- predict(decision_tree_model, validation_data, type = "class")
+svm_predictions <- predict(svm_model, validation_data)
+linear_regression_predictions <- round(predict(linear_regression_model, validation_data))
+random_forest_predictions <- predict(random_forest_model, validation_data)
+```
+
+And finally tested each for accuracy, where accuracy is defined as the proportion of predictions that were correct.
+
+```{r, echo=TRUE}
+dt_accuracy <- sum(dt_predictions == validation_data$RiskLevelNumeric) / nrow(validation_data)
+cat("Decision Tree Accuracy:", dt_accuracy, "\n")
+svm_accuracy <- sum(svm_predictions == validation_data$RiskLevelNumeric) / nrow(validation_data)
+cat("SVM Accuracy:", svm_accuracy, "\n")
+linear_regression_accuracy <- sum(linear_regression_predictions == validation_data$RiskLevelNumeric) /
+  nrow(validation_data)
+cat("Linear Regression Accuracy:", linear_regression_accuracy, "\n")
+random_forest_accuracy <- sum(random_forest_predictions == validation_data$RiskLevelNumeric) /
+  nrow(validation_data)
+cat("Random Forest Accuracy:", random_forest_accuracy, "\n")
+```
+
+For easy comparison I created a table that displays the four different models and their accuracies.
+
+```{r, echo=TRUE}
+accuracies <- c(dt_accuracy, svm_accuracy, linear_regression_accuracy, random_forest_accuracy)
+names(accuracies) <- c("Decision Tree", "SVM", "Linear Regression", "Random Forest")
+
+accuracies_df <- tibble(Model = names(accuracies), Accuracy = accuracies)
+accuracies_df %>% knitr::kable()
+```
+
+From the table above we can see that both a decision tree and linear regression provide the best accuracy.
+
+## Re-test with fewer health markers
+
+As mentioned in my introduction it would be beneficial to know if less data can be collected to make it easier and quicker and therefore reach more women. As the marker with the least correlation was shown to be Body Temperature, this is the parameter I chose to exclude.
+
+New training and validation sets were created to exclude Body Temperature.
+
+```{r, echo=TRUE}
+training_data_subset <- training_data[, setdiff(names(training_data), "BodyTemp")]
+validation_data_subset <- validation_data[, setdiff(names(validation_data), "BodyTemp")]
+```
+
+I then decided to use the decision tree model to test my hypothesis. (Linear regression was also shown to lead to high accuracy however course instructions asked us to use something more advanced than linear regression.)
+
+I trained, evaluated and tested the accuracy of the model.
+
+```{r, echo=TRUE}
+decision_tree_model_2 <- rpart(RiskLevelNumeric ~ ., data = training_data_subset, method = "class")
+dt_predictions_2 <- predict(decision_tree_model_2, validation_data_subset, type = "class")
+dt_accuracy_2 <- sum(dt_predictions_2 == validation_data_subset$RiskLevelNumeric) /
+  nrow(validation_data_subset)
+cat("Decision Tree Accuracy #2:", dt_accuracy_2, "\n")
+cat("Compared to full model Accuracy:", dt_accuracy, "\n")
+```
+
+# Results
+
+As shown by the analysis section both a decision tree and linear regression provide the best accuracy. Below is the same table for reference.
+
+```{r, echo=TRUE}
+accuracies_df %>% knitr::kable()
+```
+
+Only the decision tree model was used for further analysis and this showed that even when Body Temperature parameter is removed high accuracy on the risk level can be achieved.
+
+# Conclusion
+
+To summarise, various different health markers of pregnant women were used to train a model that shows the mortality risks categorised as low, medium and high. Four different models were used and their accuracies compared. Both decision tree and linear regression models showed high accuracy. Fewer markers were then used to run further analysis in order to establish whether less data could be collected whilst providing the same level of accuracy. This was indeed the case and provides an exciting premise for future work in evaluating the minimum number of markers needed to accurately score pregnant women in low- and middle- income countries where resources are scarce.
+
+However, there are limitations to our approach and data, data entry error being the highest as shown by some entries showing human heart rates being 7, which we know cannot be the case biologically. 
+
+Therefore, further future work could include a way to record data more accurately. Also, the time the glucose levels were measured could be added / standardised as this would affect the readings depending on whether measurements were taken close to a meal or not. Preexisting health conditions could be considered as well such as if the women contract any illnesses during the pregnancy in order to further standardise the dataset.
+
+# References
+
+1.	https://www.who.int/news-room/fact-sheets/detail/maternal-mortality
+2.	Marzia Ahmed, M. A. Kashem, Mostafijur Rahman, S. Khatun. 2020. Review and Analysis of Risk Factor of Maternal Health in Remote Area using the Internet of Things (IoT). Lecture Notes in Electrical Engineering, vol 632. DOI = 10.1007/978-981-15-2317-5_30 
